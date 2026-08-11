@@ -30,6 +30,8 @@ const userSchema = new mongoose.Schema(
       sparse: true,
     },
     password: { type: String, minlength: 6, select: false },
+    googleId: { type: String, unique: true, sparse: true },
+    avatarUrl: { type: String, default: "" },
     role: { type: String, enum: ["customer", "admin"], default: "customer" },
     isVerified: { type: Boolean, default: false },
     addresses: [addressSchema],
