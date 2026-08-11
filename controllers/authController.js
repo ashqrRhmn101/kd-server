@@ -2,6 +2,88 @@ const User = require("../models/User");
 const Otp = require("../models/Otp");
 const sendEmail = require("../utils/sendEmail");
 const { generateTokenAndSetCookie, generateOtpCode } = require("../utils/generateToken");
+const { OAuth2Client } = require("google-auth-library");
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+// @desc  Register with email + password (OTP verification is currently PAUSED
+//        per project owner's request — Gmail SMTP app-password wasn't ready yet.
+//        Re-enable by switching the frontend signup form back to the
+//        send-otp -> verify-otp flow below once email sending is fixed.)
+// @route POST /api/auth/register
+exports.register = async (req, res, next) => {
+  try {
+    const { name, email, phone, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: "নাম, ইমেইল ও পাসওয়ার্ড দিন" });
+    }
+
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ success: false, message: "এই ইমেইলে আগে থেকেই একাউন্ট আছে" });
+
+    const user = await User.create({ name, email, phone, password, isVerified: false });
+
+    generateTokenAndSetCookie(res, user._id);
+    res.status(201).json({
+      success: true,
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role, avatarUrl: user.avatarUrl, isVerified: user.isVerified },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc  Sign in / sign up with Google (frontend sends the Google ID token
+//        from Google Identity Services after the user taps "Sign in with Google")
+// @route POST /api/auth/google
+exports.googleLogin = async (req, res, next) => {
+  try {
+    const { credential } = req.body; // ID token (JWT) from Google Identity Services
+    if (!credential) return res.status(400).json({ success: false, message: "Google টোকেন পাওয়া যায়নি" });
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ success: false, message: "Google লগইন এখনো সেটআপ করা হয়নি (GOOGLE_CLIENT_ID মিসিং)" });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    let user = await User.findOne({ $or: [{ googleId: payload.sub }, { email: payload.email }] });
+
+    if (!user) {
+      user = await User.create({
+        name: payload.name,
+        email: payload.email,
+        googleId: payload.sub,
+        avatarUrl: payload.picture || "",
+        isVerified: true,
+      });
+    } else if (!user.googleId) {
+      // existing email/password user is now also linking their Google account
+      user.googleId = payload.sub;
+      if (!user.avatarUrl) user.avatarUrl = payload.picture || "";
+      user.isVerified = true;
+      await user.save();
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, message: "আপনার একাউন্ট নিষ্ক্রিয় করা হয়েছে" });
+    }
+
+    generateTokenAndSetCookie(res, user._id);
+    res.json({
+      success: true,
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role, avatarUrl: user.avatarUrl, isVerified: user.isVerified },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ===== Email OTP flow (currently unused by the frontend — kept ready for
+// when Gmail App Password / a transactional email provider is configured) =====
 
 // @desc  Send OTP to email for signup verification
 // @route POST /api/auth/send-otp
@@ -53,7 +135,7 @@ exports.verifyOtpAndRegister = async (req, res, next) => {
     generateTokenAndSetCookie(res, user._id);
     res.status(201).json({
       success: true,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role, avatarUrl: user.avatarUrl, isVerified: user.isVerified },
     });
   } catch (err) {
     next(err);
@@ -76,7 +158,7 @@ exports.login = async (req, res, next) => {
     generateTokenAndSetCookie(res, user._id);
     res.json({
       success: true,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role, avatarUrl: user.avatarUrl, isVerified: user.isVerified },
     });
   } catch (err) {
     next(err);
