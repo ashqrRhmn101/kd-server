@@ -42,6 +42,9 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 
+app.get("/", (req, res) =>
+  res.json({ success: true, message: "Khalid's Dreams API চালু আছে — /api/health দেখুন বিস্তারিত জানতে" })
+);
 app.get("/api/health", (req, res) => res.json({ success: true, message: "API চালু আছে" }));
 
 // 404 handler
