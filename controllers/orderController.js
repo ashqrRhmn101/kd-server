@@ -113,13 +113,38 @@ exports.getAllOrders = async (req, res, next) => {
   }
 };
 
-// @desc  Get single order detail (admin)
+// @desc  Get single order detail (admin) — also marks it as "seen" for notifications
 // @route GET /api/admin/orders/:id
 exports.getOrderById = async (req, res, next) => {
   try {
-    const order = await Order.findById(req.params.id).populate("user", "name email phone");
+    const order = await Order.findByIdAndUpdate(req.params.id, { isSeenByAdmin: true }, { new: true }).populate(
+      "user",
+      "name email phone"
+    );
     if (!order) return res.status(404).json({ success: false, message: "অর্ডার পাওয়া যায়নি" });
     res.json({ success: true, order });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc  Get unseen/new orders for the notification bell (admin)
+// @route GET /api/admin/orders/notifications
+exports.getNewOrderNotifications = async (req, res, next) => {
+  try {
+    const orders = await Order.find({ isSeenByAdmin: false }).sort({ createdAt: -1 }).limit(20).select("orderNumber grandTotal createdAt guestInfo user").populate("user", "name");
+    res.json({ success: true, count: orders.length, orders });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc  Mark all pending notifications as seen (e.g. when bell dropdown is opened)
+// @route PATCH /api/admin/orders/notifications/mark-seen
+exports.markAllOrdersSeen = async (req, res, next) => {
+  try {
+    await Order.updateMany({ isSeenByAdmin: false }, { isSeenByAdmin: true });
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }
@@ -149,9 +174,10 @@ exports.updateOrderStatus = async (req, res, next) => {
 // @route GET /api/admin/dashboard
 exports.getDashboardStats = async (req, res, next) => {
   try {
-    const [totalOrders, pendingOrders, totalRevenueAgg, totalProducts, recentOrders] = await Promise.all([
+    const [totalOrders, pendingOrders, newOrdersCount, totalRevenueAgg, totalProducts, recentOrders] = await Promise.all([
       Order.countDocuments(),
       Order.countDocuments({ status: "pending" }),
+      Order.countDocuments({ isSeenByAdmin: false }),
       Order.aggregate([{ $match: { status: { $ne: "cancelled" } } }, { $group: { _id: null, sum: { $sum: "$grandTotal" } } }]),
       Product.countDocuments({ isActive: true }),
       Order.find().sort({ createdAt: -1 }).limit(5),
@@ -162,6 +188,7 @@ exports.getDashboardStats = async (req, res, next) => {
       stats: {
         totalOrders,
         pendingOrders,
+        newOrdersCount,
         totalRevenue: totalRevenueAgg[0]?.sum || 0,
         totalProducts,
       },

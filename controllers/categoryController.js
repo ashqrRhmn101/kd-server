@@ -9,6 +9,17 @@ exports.getCategories = async (req, res, next) => {
   }
 };
 
+// @desc  Get ALL categories including inactive ones (admin management view)
+// @route GET /api/admin/categories
+exports.getAllCategoriesAdmin = async (req, res, next) => {
+  try {
+    const categories = await Category.find().sort({ sortOrder: 1, createdAt: -1 });
+    res.json({ success: true, categories });
+  } catch (err) {
+    next(err);
+  }
+};
+
 exports.createCategory = async (req, res, next) => {
   try {
     const category = await Category.create(req.body);
