@@ -52,6 +52,18 @@ exports.getProductBySlug = async (req, res, next) => {
   }
 };
 
+// @desc  Get single product by ID for admin editing (works even if inactive)
+// @route GET /api/admin/products/:id
+exports.getProductByIdAdmin = async (req, res, next) => {
+  try {
+    const product = await Product.findById(req.params.id).populate("category", "name slug");
+    if (!product) return res.status(404).json({ success: false, message: "প্রোডাক্ট পাওয়া যায়নি" });
+    res.json({ success: true, product });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc  Create product (admin)
 // @route POST /api/admin/products
 exports.createProduct = async (req, res, next) => {
