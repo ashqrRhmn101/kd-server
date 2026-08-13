@@ -51,6 +51,7 @@ const orderSchema = new mongoose.Schema(
     courier: { type: String, default: null },
     trackingId: { type: String, default: null },
     adminNote: { type: String, default: "" },
+    isSeenByAdmin: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
